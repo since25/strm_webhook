@@ -142,8 +142,42 @@ class StrmGenerator:
         返回: {"created": [...], "skipped": [...], "errors": [...]}
         """
         result = {"created": [], "skipped": [], "errors": []}
-        self._process_dir(alist_path, result, refresh=True)
+
+        # 首次尝试处理
+        # 如果是第一次请求的根路径，且失败了，尝试刷新父目录后重试
+        items = self.alist.list_dir(alist_path, refresh=True) 
+        if items is None:
+            # 尝试刷新父目录 (仅在根路径失败时尝试一次)
+            parent_dir = os.path.dirname(alist_path.rstrip("/"))
+            if parent_dir and parent_dir != "/" and parent_dir != alist_path:
+                logger.warning(f"第一次获取失败，尝试刷新父目录: {parent_dir}")
+                self.alist.list_dir(parent_dir, refresh=True)
+                # 重试
+                items = self.alist.list_dir(alist_path, refresh=True)
+
+        if items is None:
+            result["errors"].append(f"无法列出目录: {alist_path}")
+            return result
+
+        # 开始递归处理
+        # 注意：这里不再调用 _process_dir 避免重复 list_dir
+        # 而是直接复用 items 进行处理
+        self._process_items(alist_path, items, result)
         return result
+
+    def _process_items(self, dir_path, items, result):
+        """处理目录下的项目列表"""
+        for item in items:
+            item_name = item.get("name", "")
+            item_path = f"{dir_path}/{item_name}".replace("//", "/")
+
+            if item.get("is_dir"):
+                # 递归处理子目录
+                self._process_dir(item_path, result)
+            else:
+                # 处理文件
+                self._process_file(item_path, result)
+
 
     def _process_dir(self, dir_path, result, refresh=False):
         """递归处理目录"""
