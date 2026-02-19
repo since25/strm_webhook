@@ -9,15 +9,17 @@ STRM Webhook 生成服务
     python strm_webhook.py --config /path/to/config.yaml
 """
 
+
+
 import os
 import sys
 import yaml
 import logging
 import argparse
 import requests
+import time
 from flask import Flask, request, jsonify
 from urllib.parse import quote
-
 # ============================================================
 # 日志配置
 # ============================================================
@@ -39,6 +41,7 @@ DEFAULT_CONFIG = {
     "strm_replace_path": "",
     "host": "0.0.0.0",
     "port": 9527,
+    "strm_delay": 10,  # 默认延迟 10 秒
     "video_exts": ["mp4", "mkv", "flv", "mov", "m4v", "avi", "webm", "wmv", "ts", "rmvb"],
 }
 
@@ -260,6 +263,15 @@ def create_app(config):
             path = 保存资源的完整路径 或 保存的资源文件夹名称
         """
         data = request.get_json(silent=True) or {}
+
+        # 延迟执行，等待 AList/网盘 刷新
+        delay = data.get("delayTime", 0)
+        if delay == 0:
+            delay = config.get("strm_delay", 10)
+            
+        if delay > 0:
+            logger.info(f"⏳ 等待 {delay} 秒后开始执行...")
+            time.sleep(delay)
 
         # 兼容多种参数名
         path = (

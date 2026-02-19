@@ -14,6 +14,8 @@ strm_replace_path: ""                           # 可选，替换 AList 挂载�
 # Webhook 服务配置
 host: "0.0.0.0"
 port: 9527
+strm_delay: 10
+
 
 # 视频文件扩展名
 video_exts:
