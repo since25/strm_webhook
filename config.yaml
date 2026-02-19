@@ -1,0 +1,29 @@
+# ========================================
+# STRM Webhook 生成服务 配置文件
+# ========================================
+
+# AList 服务配置
+alist_url: "http://192.168.70.138:5244"   # AList 服务地址
+alist_token: ""                            # AList API Token（如需认证时填写）
+
+# STRM 生成配置
+strm_server: "http://192.168.70.138:5244/d"   # STRM 文件内的链接前缀
+strm_save_dir: "/data/strm"                    # STRM 文件保存目录（容器内路径，映射到宿主机）
+strm_replace_path: ""                           # 可选，替换 AList 挂载路径前缀
+
+# Webhook 服务配置
+host: "0.0.0.0"
+port: 9527
+
+# 视频文件扩展名
+video_exts:
+  - mp4
+  - mkv
+  - flv
+  - mov
+  - m4v
+  - avi
+  - webm
+  - wmv
+  - ts
+  - rmvb

@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  strm-webhook:
+    build: .
+    container_name: strm-webhook
+    restart: unless-stopped
+    ports:
+      - "9527:9527"
+    volumes:
+      # 配置文件
+      - ./config.yaml:/app/config.yaml
+      # STRM 输出目录：映射到宿主机实际目录
+      - /mnt/user/docker1/alist-strm/video/115strm:/data/strm
+    environment:
+      - TZ=Asia/Shanghai
+      # 也可以通过环境变量覆盖配置，取消注释按需设置:
+      # - ALIST_URL=http://192.168.70.138:5244
+      # - ALIST_TOKEN=your_token
+      # - STRM_SERVER=http://192.168.70.138:5244/d
+      # - STRM_SAVE_DIR=/data/strm
