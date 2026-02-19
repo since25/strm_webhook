@@ -7,10 +7,15 @@
 ### Docker 部署（推荐）
 
 ```bash
-# 1. 编辑配置
+# 1. 克隆仓库
+git clone https://github.com/since25/strm_webhook.git
+cd strm_webhook
+
+# 2. 准备配置
+cp config.example.yaml config.yaml
 vim config.yaml
 
-# 2. 构建并启动
+# 3. 构建并启动
 docker-compose up -d
 
 # 3. 查看日志
