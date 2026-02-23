@@ -16,7 +16,7 @@ cp config.example.yaml config.yaml
 vim config.yaml
 
 # 3. 构建并启动
-docker-compose up -d
+docker compose up -d --build
 
 # 3. 查看日志
 docker logs -f strm-webhook
