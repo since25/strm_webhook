@@ -166,8 +166,8 @@ class StrmGenerator:
 
     def _resolve_actual_path(self, target_path):
         """
-        递归解析实际路径。从根开始，逐级刷新并模糊匹配。
-        例如: /A/B/C -> 解析为 AList 上实际可能带空格或大小写略有差异的实际路径
+        递归解析实际路径。支持贪婪匹配（处理文件夹名中包含 / 的情况）。
+        例如: /A/B/C/D -> 如果 AList 上实际是 /A/B | C/D，则能正确匹配。
         """
         target_path = target_path.strip("/")
         if not target_path:
@@ -176,42 +176,61 @@ class StrmGenerator:
         segments = target_path.split("/")
         current_path = ""
         
-        for segment in segments:
+        i = 0
+        while i < len(segments):
             parent_path = current_path if current_path else "/"
-            logger.info(f"正在发现层级: {parent_path} -> 寻找: '{segment}'")
-            
-            # 列出当前父目录内容
             items = self.alist.list_dir(parent_path, refresh=True)
             if items is None:
                 logger.error(f"解析路径中断，无法列出: {parent_path}")
                 return None
-                
-            # 在当前级找匹配
-            matched_name = self._find_item_in_list(segment, items)
+            
+            # 贪婪匹配：尝试最长的剩余路径段
+            matched_name = None
+            matched_count = 0
+            
+            for k in range(len(segments) - i, 0, -1):
+                candidate_segment = "/".join(segments[i:i+k])
+                # 在当前层级寻找匹配项
+                name = self._find_item_in_list(candidate_segment, items)
+                if name:
+                    matched_name = name
+                    matched_count = k
+                    break
+            
             if matched_name:
                 current_path = (f"{current_path}/{matched_name}" if current_path else f"/{matched_name}").replace("//", "/")
-                logger.debug(f"通过层级发现: {current_path}")
+                logger.info(f"层级发现成功: {parent_path} -> '{matched_name}' (消耗了 {matched_count} 段)")
+                i += matched_count
             else:
-                # 记录调试信息
-                sample = [i.get("name") for i in items[:5]]
-                logger.error(f"在 '{parent_path}' 下找不到匹配项 '{segment}'。本级示例内容: {sample}")
+                # 尝试备写：如果是最后一段且没找到，可能它就是一个文件，直接假设路径并交给后续处理
+                # 但由于是解析目录，这里通常应该报错
+                sample = [item.get("name") for item in items[:5]]
+                logger.error(f"在 '{parent_path}' 下找不到任何匹配项，起始段: '{segments[i]}'。本级内容示例: {sample}")
                 return None
                 
         return current_path
 
     def _find_item_in_list(self, target_name, items):
-        """在给定列表中寻找匹配项（处理大小写、首尾空格）"""
-        target_clean = target_name.strip().lower()
+        """在给定列表中寻找匹配项（处理大小写、首尾空格、以及 / 被替换为 | 或 ／ 的情况）"""
+        def normalize(s):
+            # 统一转小写、去掉首尾空格、将常见的目录分隔符替代符统一
+            s = s.strip().lower()
+            # 常见的 / 替代符
+            for char in ["/", "|", "／", "\\", " "]:
+                s = s.replace(char, "")
+            return s
+
+        target_norm = normalize(target_name)
         
         # 1. 完全匹配
         for item in items:
             if item.get("name") == target_name:
                 return item.get("name")
         
-        # 2. 忽略首尾空格和大小写匹配
+        # 2. 归一化模糊匹配
         for item in items:
             name = item.get("name", "")
-            if name.strip().lower() == target_clean:
+            if normalize(name) == target_norm:
                 return name
                 
         return None
