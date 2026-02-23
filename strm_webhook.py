@@ -145,28 +145,62 @@ class StrmGenerator:
         返回: {"created": [...], "skipped": [...], "errors": [...]}
         """
         result = {"created": [], "skipped": [], "errors": []}
+        alist_path = alist_path.rstrip("/")
 
         # 首次尝试处理
-        # 如果是第一次请求的根路径，且失败了，尝试刷新父目录后重试
         items = self.alist.list_dir(alist_path, refresh=True) 
+        
         if items is None:
-            # 尝试刷新父目录 (仅在根路径失败时尝试一次)
-            parent_dir = os.path.dirname(alist_path.rstrip("/"))
-            if parent_dir and parent_dir != "/" and parent_dir != alist_path:
-                logger.warning(f"第一次获取失败，尝试刷新父目录: {parent_dir}")
-                self.alist.list_dir(parent_dir, refresh=True)
-                # 重试
-                items = self.alist.list_dir(alist_path, refresh=True)
+            # 尝试刷新并查找父目录下的匹配项
+            parent_dir = os.path.dirname(alist_path)
+            target_name = os.path.basename(alist_path)
+            
+            if parent_dir and parent_dir != alist_path:
+                logger.warning(f"第一次获取失败 (path={alist_path})，尝试刷新父目录: {parent_dir}")
+                parent_items = self.alist.list_dir(parent_dir, refresh=True)
+                
+                if parent_items:
+                    logger.info(f"父目录 {parent_dir} 共有 {len(parent_items)} 个项目")
+                    # 在父目录中进行模糊匹配查找真正的名称
+                    matched_name = self._find_item_in_parent(target_name, parent_items)
+                    if matched_name:
+                        actual_path = f"{parent_dir}/{matched_name}".replace("//", "/")
+                        logger.info(f"找到匹配项: '{target_name}' -> '{matched_name}'，使用实际路径: {actual_path}")
+                        # 使用实际路径重试
+                        time.sleep(1) # 短暂等待 AList 状态同步
+                        alist_path = actual_path
+                        items = self.alist.list_dir(alist_path, refresh=True)
+                    else:
+                        # 记录父目录前几个项目方便调试
+                        sample_names = [i.get("name") for i in parent_items[:10]]
+                        logger.error(f"在父目录中未找到匹配项 '{target_name}'。当前目录下项目示例: {sample_names}")
+                else:
+                    logger.error(f"获取父目录内容失败: {parent_dir}")
 
         if items is None:
             result["errors"].append(f"无法列出目录: {alist_path}")
             return result
 
         # 开始递归处理
-        # 注意：这里不再调用 _process_dir 避免重复 list_dir
-        # 而是直接复用 items 进行处理
         self._process_items(alist_path, items, result)
         return result
+
+    def _find_item_in_parent(self, target_name, parent_items):
+        """在父目录内容中寻找匹配项（处理大小写、首尾空格等）"""
+        target_clean = target_name.strip().lower()
+        
+        # 1. 完全匹配
+        for item in parent_items:
+            if item.get("name") == target_name:
+                return item.get("name")
+        
+        # 2. 忽略首尾空格和大小写匹配
+        for item in parent_items:
+            name = item.get("name", "")
+            if name.strip().lower() == target_clean:
+                return name
+                
+        return None
 
     def _process_items(self, dir_path, items, result):
         """处理目录下的项目列表"""
