@@ -145,57 +145,71 @@ class StrmGenerator:
         返回: {"created": [...], "skipped": [...], "errors": [...]}
         """
         result = {"created": [], "skipped": [], "errors": []}
-        alist_path = alist_path.rstrip("/")
-
-        # 首次尝试处理
-        items = self.alist.list_dir(alist_path, refresh=True) 
         
-        if items is None:
-            # 尝试刷新并查找父目录下的匹配项
-            parent_dir = os.path.dirname(alist_path)
-            target_name = os.path.basename(alist_path)
+        # 1. 递归解析实际路径（处理中间缺失层级和模糊匹配）
+        actual_path = self._resolve_actual_path(alist_path)
+        if not actual_path:
+            result["errors"].append(f"解析路径失败 (无法逐级找到匹配项): {alist_path}")
+            return result
             
-            if parent_dir and parent_dir != alist_path:
-                logger.warning(f"第一次获取失败 (path={alist_path})，尝试刷新父目录: {parent_dir}")
-                parent_items = self.alist.list_dir(parent_dir, refresh=True)
-                
-                if parent_items:
-                    logger.info(f"父目录 {parent_dir} 共有 {len(parent_items)} 个项目")
-                    # 在父目录中进行模糊匹配查找真正的名称
-                    matched_name = self._find_item_in_parent(target_name, parent_items)
-                    if matched_name:
-                        actual_path = f"{parent_dir}/{matched_name}".replace("//", "/")
-                        logger.info(f"找到匹配项: '{target_name}' -> '{matched_name}'，使用实际路径: {actual_path}")
-                        # 使用实际路径重试
-                        time.sleep(1) # 短暂等待 AList 状态同步
-                        alist_path = actual_path
-                        items = self.alist.list_dir(alist_path, refresh=True)
-                    else:
-                        # 记录父目录前几个项目方便调试
-                        sample_names = [i.get("name") for i in parent_items[:10]]
-                        logger.error(f"在父目录中未找到匹配项 '{target_name}'。当前目录下项目示例: {sample_names}")
-                else:
-                    logger.error(f"获取父目录内容失败: {parent_dir}")
-
+        logger.info(f"最终解析路径为: {actual_path}")
+        
+        # 2. 获取最终解析路径的项目列表
+        items = self.alist.list_dir(actual_path, refresh=True)
         if items is None:
-            result["errors"].append(f"无法列出目录: {alist_path}")
+            result["errors"].append(f"无法列出解析后的目录: {actual_path}")
             return result
 
-        # 开始递归处理
-        self._process_items(alist_path, items, result)
+        # 3. 开始递归处理
+        self._process_items(actual_path, items, result)
         return result
 
-    def _find_item_in_parent(self, target_name, parent_items):
-        """在父目录内容中寻找匹配项（处理大小写、首尾空格等）"""
+    def _resolve_actual_path(self, target_path):
+        """
+        递归解析实际路径。从根开始，逐级刷新并模糊匹配。
+        例如: /A/B/C -> 解析为 AList 上实际可能带空格或大小写略有差异的实际路径
+        """
+        target_path = target_path.strip("/")
+        if not target_path:
+            return "/"
+            
+        segments = target_path.split("/")
+        current_path = ""
+        
+        for segment in segments:
+            parent_path = current_path if current_path else "/"
+            logger.info(f"正在发现层级: {parent_path} -> 寻找: '{segment}'")
+            
+            # 列出当前父目录内容
+            items = self.alist.list_dir(parent_path, refresh=True)
+            if items is None:
+                logger.error(f"解析路径中断，无法列出: {parent_path}")
+                return None
+                
+            # 在当前级找匹配
+            matched_name = self._find_item_in_list(segment, items)
+            if matched_name:
+                current_path = (f"{current_path}/{matched_name}" if current_path else f"/{matched_name}").replace("//", "/")
+                logger.debug(f"通过层级发现: {current_path}")
+            else:
+                # 记录调试信息
+                sample = [i.get("name") for i in items[:5]]
+                logger.error(f"在 '{parent_path}' 下找不到匹配项 '{segment}'。本级示例内容: {sample}")
+                return None
+                
+        return current_path
+
+    def _find_item_in_list(self, target_name, items):
+        """在给定列表中寻找匹配项（处理大小写、首尾空格）"""
         target_clean = target_name.strip().lower()
         
         # 1. 完全匹配
-        for item in parent_items:
+        for item in items:
             if item.get("name") == target_name:
                 return item.get("name")
         
         # 2. 忽略首尾空格和大小写匹配
-        for item in parent_items:
+        for item in items:
             name = item.get("name", "")
             if name.strip().lower() == target_clean:
                 return name
