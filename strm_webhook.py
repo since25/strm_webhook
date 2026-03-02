@@ -251,8 +251,20 @@ class StrmGenerator:
 
     def _process_dir(self, dir_path, result, refresh=False):
         """递归处理目录"""
+        # 为了防止触发 AList/115 等网盘的 API 速率限制，每次请求目录前稍微停顿一下
+        time.sleep(0.5)
+        
         items = self.alist.list_dir(dir_path, refresh=refresh)
+        
+        # 处理子目录为空但尚未刷新的情况
+        if items == [] and not refresh:
+            logger.info(f"目录 '{dir_path}' 为空，可能需要刷新。等待 5 秒后重试...")
+            time.sleep(5) # 发现空目录时，等待5秒再请求刷新
+            items = self.alist.list_dir(dir_path, refresh=True)
+            
         if items is None:
+            # 请求失败时额外休眠一下，避免被彻底封禁
+            time.sleep(2)
             result["errors"].append(f"无法列出目录: {dir_path}")
             return
 
@@ -261,8 +273,8 @@ class StrmGenerator:
             item_path = f"{dir_path}/{item_name}".replace("//", "/")
 
             if item.get("is_dir"):
-                # 递归处理子目录
-                self._process_dir(item_path, result)
+                # 递归处理子目录，子目录不强制刷新，依靠默认缓存，同时递归本身已经有限速
+                self._process_dir(item_path, result, refresh=False)
             else:
                 # 处理文件
                 self._process_file(item_path, result)
